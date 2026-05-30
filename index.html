@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>ひめのキラキラ・キャッチ</title>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+<style>
+:root {
+  --pink:#f472b6; --dpink:#be185d; --gold:#f59e0b;
+  --lavender:#a855f7; --dlav:#7e22ce;
+  --soft-bg1:#fdf4ff; --soft-bg2:#fce7f3;
+  --text-main:#6b21a8; --text-sub:#9333ea;
+  --real-vh: 1vh; /* JSで上書き */
+}
+*{margin:0;padding:0;box-sizing:border-box;touch-action:none;-webkit-tap-highlight-color:transparent;}
+html{
+  height: -webkit-fill-available; /* iOS Safari対応 */
+}
+body{
+  background: linear-gradient(160deg, #f5e8ff 0%, #fde0f0 45%, #fff5fb 100%);
+  height: 100vh;
+  height: calc(var(--real-vh) * 100); /* JS計測値で上書き */
+  max-height: -webkit-fill-available;
+  display:flex;flex-direction:column;align-items:center;
+  font-family:'Zen Maru Gothic','Hiragino Maru Gothic Pro',sans-serif;
+  overflow:hidden;position:relative;
+}
+
+/* === 背景キラキラ（パステル） === */
+#bgCanvas{position:fixed;inset:0;pointer-events:none;z-index:0;}
+
+/* === スコアボード === */
+#scoreBoard{
+  position:relative;z-index:10;width:100%;max-width:430px;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:max(8px, env(safe-area-inset-top, 8px)) 12px 6px;
+  flex-shrink:0;
+  background:linear-gradient(135deg,rgba(255,255,255,0.82),rgba(253,232,255,0.82));
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:2px solid rgba(232,180,255,0.6);
+  box-shadow:0 3px 20px rgba(168,85,247,0.18),inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.sBox{text-align:center;flex:1;}
+.sLabel{font-size:10px;color:#a855f7;font-weight:700;letter-spacing:.06em;margin-bottom:1px;}
+.sVal{
+  font-size:30px;font-weight:900;color:var(--dlav);line-height:1;
+  text-shadow:0 1px 0 rgba(255,255,255,.9),0 0 12px rgba(168,85,247,.3);
+  transition:transform .12s cubic-bezier(.34,1.56,.64,1);
+}
+.sVal.pop{transform:scale(1.4);}
+.sdiv{width:1.5px;height:40px;background:linear-gradient(to bottom,transparent,rgba(200,130,255,.5),transparent);margin:0 4px;}
+#timerWrap{text-align:center;flex:0 0 70px;}
+.tLabel{font-size:10px;color:#f472b6;font-weight:700;letter-spacing:.06em;margin-bottom:1px;}
+#timerDisp{
+  font-size:32px;font-weight:900;color:var(--lavender);line-height:1;
+  text-shadow:0 1px 0 rgba(255,255,255,.9),0 0 10px rgba(168,85,247,.3);
+}
+#timerDisp.danger{color:#e11d48;text-shadow:0 0 12px rgba(225,29,72,.5);animation:tpulse .5s ease-in-out infinite alternate;}
+@keyframes tpulse{from{transform:scale(1);}to{transform:scale(1.12);}}
+
+/* === ゲームエリア === */
+#gameWrap{
+  position:relative;width:100%;max-width:430px;
+  flex:1;min-height:0; /* flexboxの縮小を許可 */
+  z-index:5;overflow:hidden;
+}
+#particleCanvas{position:absolute;inset:0;pointer-events:none;z-index:2;}
+
+/* === 落下アイテム === */
+.drop-item{
+  position:absolute;z-index:3;pointer-events:none;
+  font-size:44px;line-height:1;
+  filter:drop-shadow(0 0 8px rgba(255,180,240,.9)) drop-shadow(0 2px 4px rgba(0,0,0,.12));
+  will-change:top;
+}
+.drop-item.bad{filter:drop-shadow(0 0 8px rgba(180,255,180,.8)) drop-shadow(0 2px 4px rgba(0,0,0,.12));}
+
+/* === 姫グロー（別レイヤー） === */
+#playerGlow{
+  position:absolute;z-index:3;pointer-events:none;
+  transform:translateX(-50%);
+  width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle,rgba(220,140,255,.55) 0%,rgba(255,160,220,.3) 45%,rgba(255,200,240,.1) 65%,transparent 75%);
+  animation:glowPulse 2s ease-in-out infinite alternate;
+  will-change:left,bottom;
+}
+@keyframes glowPulse{
+  from{transform:translateX(-50%) scale(1); opacity:.75;}
+  to{transform:translateX(-50%) scale(1.2); opacity:1;}
+}
+/* === 姫キャラクター === */
+#playerWrap{
+  position:absolute;z-index:4;pointer-events:none;
+  transform:translateX(-50%);
+  will-change:left,bottom;
+}
+#playerWrap img{
+  width:160px;height:auto;
+  display:block;
+}
+#playerShadow{
+  position:absolute;z-index:3;pointer-events:none;
+  width:70px;height:12px;border-radius:50%;
+  background:rgba(168,85,247,.25);
+  transform:translateX(-50%);
+}
+
+/* === ゲーム背景装飾 === */
+#gameDeco{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  overflow:hidden;
+}
+/* お城シルエット */
+#gameDeco::before{
+  content:'🏰';
+  position:absolute;top:-20px;left:50%;transform:translateX(-50%);
+  font-size:160px;opacity:.1;filter:blur(1.5px);
+}
+/* 草原グラウンド */
+#gameDeco::after{
+  content:'';
+  position:absolute;bottom:0;left:0;right:0;height:90px;
+  background:linear-gradient(to top,rgba(200,255,190,.35) 0%,rgba(220,255,210,.15) 60%,transparent 100%);
+}
+/* フローティングデコ要素 */
+.bg-deco{
+  position:absolute;pointer-events:none;
+  font-size:28px;opacity:.18;
+  animation:bgFloat linear infinite;
+}
+@keyframes bgFloat{
+  0%  {transform:translateY(0) rotate(0deg) scale(1);}
+  33% {transform:translateY(-18px) rotate(12deg) scale(1.08);}
+  66% {transform:translateY(8px) rotate(-8deg) scale(.94);}
+  100%{transform:translateY(0) rotate(0deg) scale(1);}
+}
+/* 地面の花 */
+.ground-flower{
+  position:absolute;bottom:4px;pointer-events:none;
+  font-size:22px;opacity:.5;
+  animation:flowerSway 3s ease-in-out infinite alternate;
+}
+@keyframes flowerSway{
+  from{transform:rotate(-6deg);}
+  to{transform:rotate(6deg);}
+}
+
+/* === コンボ === */
+#comboDisp{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  font-size:22px;font-weight:900;
+  color:#fff;
+  background:linear-gradient(135deg,rgba(168,85,247,.85),rgba(236,72,153,.85));
+  padding:4px 18px;border-radius:40px;
+  box-shadow:0 3px 12px rgba(168,85,247,.4);
+  text-shadow:0 1px 0 rgba(0,0,0,.2);
+  pointer-events:none;z-index:20;display:none;white-space:nowrap;
+}
+@keyframes comboIn{from{transform:translateX(-50%) scale(.3);opacity:0;}to{transform:translateX(-50%) scale(1);opacity:1;}}
+
+/* === 新記録バナー === */
+#nrBanner{
+  position:absolute;top:18%;left:50%;transform:translateX(-50%);
+  text-align:center;pointer-events:none;z-index:30;display:none;
+}
+.nr-text{
+  font-size:42px;font-weight:900;white-space:nowrap;
+  color:#fff;
+  text-shadow:0 0 16px var(--gold),0 0 32px var(--pink),2px 2px 0 var(--dpink);
+  background:linear-gradient(135deg,rgba(168,85,247,.7),rgba(236,72,153,.7));
+  padding:8px 24px;border-radius:50px;
+  box-shadow:0 4px 20px rgba(168,85,247,.4);
+  animation:nrPop .45s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.nr-sub{font-size:18px;color:var(--gold);font-weight:900;text-shadow:0 0 8px var(--gold);animation:nrFade .3s .2s both;margin-top:4px;}
+@keyframes nrPop{0%{transform:scale(.2) rotate(-8deg);opacity:0;}70%{transform:scale(1.12) rotate(2deg);}100%{transform:scale(1) rotate(0);opacity:1;}}
+@keyframes nrFade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* === スコアポップ === */
+.scorePopup{
+  position:absolute;font-size:28px;font-weight:900;
+  pointer-events:none;z-index:25;
+  text-shadow:0 2px 6px rgba(0,0,0,.2),0 0 10px rgba(255,255,255,.8);
+  animation:sfloat .9s ease forwards;
+}
+@keyframes sfloat{0%{opacity:1;transform:translateY(0) scale(1);}100%{opacity:0;transform:translateY(-80px) scale(.7);}}
+
+/* === フラッシュ === */
+#flash{position:absolute;inset:0;pointer-events:none;z-index:28;opacity:0;transition:opacity .06s;border-radius:0;}
+
+/* === ゲーム背景 === */
+#gameBg{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(160deg,#f5e8ff 0%,#fde0f0 50%,#fff5fb 100%);
+}
+#gameBg.rainbow{animation:rainbowBg 2s linear infinite;}
+@keyframes rainbowBg{
+  0%  {background:linear-gradient(160deg,#ffe8f5,#f5e8ff,#e8f5ff);}
+  25% {background:linear-gradient(160deg,#fff5e8,#ffe8f5,#f5e8ff);}
+  50% {background:linear-gradient(160deg,#e8ffe8,#fff5e8,#ffe8f5);}
+  75% {background:linear-gradient(160deg,#e8f5ff,#e8ffe8,#fff5e8);}
+  100%{background:linear-gradient(160deg,#ffe8f5,#f5e8ff,#e8f5ff);}
+}
+
+/* === オーバーレイ === */
+#overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;z-index:50;
+  padding:0 0 env(safe-area-inset-bottom, 12px); /* ノッチ・ホームバー対応 */
+  background:linear-gradient(160deg,#f3e8ff 0%,#fce7f3 40%,#fdf2ff 70%,#fff0f9 100%);
+  overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
+/* オーバーレイ全体の背景に浮かぶデコ */
+.ov-bg{
+  position:fixed;pointer-events:none;z-index:51;
+  animation:ovFloat ease-in-out infinite alternate;
+  opacity:.22;
+}
+@keyframes ovFloat{
+  from{transform:translateY(0) rotate(-4deg) scale(1);}
+  to  {transform:translateY(-14px) rotate(7deg) scale(1.12);}
+}
+
+/* トップ画像 */
+#topImgWrap{
+  width:100%;max-width:430px;
+  position:relative;flex-shrink:0;
+  overflow:hidden;
+  border-radius:0 0 24px 24px;
+}
+#topImgWrap>img.top-img{
+  width:100%;display:block;
+  /* 高さを画面の38%に固定してクロップ。姫が中央に来るよう位置調整 */
+  height: calc(var(--real-vh) * 38);
+  object-fit:cover;
+  object-position:center 25%;
+  border-radius:0 0 24px 24px;
+  box-shadow:0 6px 32px rgba(168,85,247,.22);
+}
+/* 枠キラキライン */
+#topImgWrap::after{
+  content:'';position:absolute;inset:0;
+  border-radius:0 0 24px 24px;
+  box-shadow:inset 0 0 0 3px rgba(255,200,255,.65),inset 0 0 20px rgba(200,100,255,.15);
+  pointer-events:none;z-index:2;
+}
+/* タイトルテキストオーバーレイ */
+#titleOverlay{
+  position:absolute;bottom:0;left:0;right:0;z-index:3;
+  padding:20px 16px 14px;
+  background:linear-gradient(to top,rgba(160,60,230,.78) 0%,rgba(190,80,240,.35) 55%,transparent 100%);
+  border-radius:0 0 24px 24px;text-align:center;
+}
+.title-logo{
+  font-size:24px;font-weight:900;color:#fff;line-height:1.2;
+  text-shadow:0 0 16px #fff,0 0 32px rgba(220,100,255,.9),0 2px 0 rgba(80,0,130,.5);
+  white-space:nowrap;letter-spacing:.04em;
+  animation:titleShimmer 2s ease-in-out infinite alternate;
+}
+@keyframes titleShimmer{
+  from{text-shadow:0 0 16px #fff,0 0 32px rgba(220,100,255,.9),0 2px 0 rgba(80,0,130,.5);}
+  to  {text-shadow:0 0 24px #fff,0 0 56px rgba(255,160,255,1),0 0 72px rgba(200,60,220,.7),0 2px 0 rgba(80,0,130,.5);}
+}
+.title-sub{font-size:13px;color:rgba(255,255,255,.95);font-weight:700;margin-top:3px;text-shadow:0 1px 0 rgba(80,0,130,.4);}
+/* タイトル画像周りのデコ */
+.title-deco{
+  position:absolute;pointer-events:none;z-index:4;
+  animation:tdeco ease-in-out infinite alternate;
+}
+@keyframes tdeco{
+  from{transform:translateY(0) rotate(-5deg) scale(1);}
+  to  {transform:translateY(-9px) rotate(7deg) scale(1.14);}
+}
+
+/* ===== リザルト用コンパクトヘッダー ===== */
+#resultHeader{
+  display:none; /* 通常は非表示、リザルト時に表示 */
+  width:100%;max-width:430px;flex-shrink:0;
+  text-align:center;padding:10px 0 6px;
+}
+.rh-crown{ font-size:40px; animation:crownBounce 1s ease-in-out infinite alternate; }
+@keyframes crownBounce{ from{transform:translateY(0) scale(1);} to{transform:translateY(-6px) scale(1.1);} }
+.rh-title{ font-size:18px;font-weight:900;color:var(--dlav);
+  text-shadow:0 0 10px rgba(168,85,247,.4); }
+
+/* ===== コンテンツエリア ===== */
+#overlayContent{
+  width:100%;max-width:430px;
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 14px 0;flex:1;min-height:0;
+  position:relative;z-index:55;
+  justify-content:space-evenly;
+}
+
+/* アイテムショーケース */
+#itemShowcase{
+  display:flex;justify-content:center;align-items:center;
+  gap:4px;padding:6px 10px;width:100%;
+  background:linear-gradient(135deg,rgba(255,255,255,.7),rgba(252,231,255,.7));
+  border:1.5px solid rgba(220,150,255,.45);
+  border-radius:14px;
+  box-shadow:0 3px 14px rgba(168,85,247,.1),inset 0 1px 0 rgba(255,255,255,.85);
+}
+.showcase-item{
+  font-size:22px;
+  animation:showcaseBounce ease-in-out infinite alternate;
+  filter:drop-shadow(0 0 5px rgba(255,180,230,.7));
+}
+@keyframes showcaseBounce{
+  from{transform:translateY(0) scale(1);}
+  to  {transform:translateY(-5px) scale(1.1);}
+}
+
+/* キャラ＋説明エリア — キャラ上・カード下の縦積み */
+#midSection{
+  display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;
+}
+#charaThumb{
+  width:140px; /* 大きく */
+}
+#charaThumb img{
+  width:100%;height:auto;display:block;
+  mix-blend-mode:multiply;
+}
+
+/* ガラスカード */
+.glass-card{
+  background:rgba(255,255,255,.72);
+  border:1.5px solid rgba(220,155,255,.5);
+  border-radius:16px;
+  backdrop-filter:blur(8px);
+  padding:8px 12px;flex:1;
+  box-shadow:0 3px 16px rgba(168,85,247,.1),inset 0 1px 0 rgba(255,255,255,.88);
+}
+.how-row{display:flex;align-items:center;gap:7px;font-size:11px;color:#7e22ce;font-weight:700;padding:2px 0;}
+.how-row span:first-child{font-size:16px;}
+
+/* さいこうスコアバッジ */
+#bestBadge{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:6px 16px;
+  background:linear-gradient(135deg,rgba(253,224,255,.9),rgba(255,240,200,.85));
+  border:2px solid rgba(230,160,255,.6);
+  border-radius:50px;
+  box-shadow:0 3px 14px rgba(168,85,247,.15),inset 0 1px 0 rgba(255,255,255,.9);
+}
+.badge-label{font-size:11px;font-weight:900;color:#9333ea;letter-spacing:.06em;}
+.badge-val{font-size:26px;font-weight:900;color:#7e22ce;
+  text-shadow:0 0 10px rgba(168,85,247,.4),0 1px 0 rgba(255,255,255,.8);}
+.badge-unit{font-size:11px;font-weight:700;color:#a855f7;}
+
+/* リザルト */
+.result-msg{
+  font-size:26px;font-weight:900;color:var(--dlav);text-align:center;line-height:1.4;
+  text-shadow:0 0 12px rgba(168,85,247,.4),0 1px 0 rgba(255,255,255,.9);
+  margin-bottom:4px;
+  animation:rPop .5s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+@keyframes rPop{from{transform:scale(.5);opacity:0;}to{transform:scale(1);opacity:1;}}
+.r-score-lbl{font-size:12px;color:#a855f7;font-weight:700;letter-spacing:.15em;margin-bottom:2px;}
+.r-score-big{
+  font-size:64px;font-weight:900;line-height:1;
+  background:linear-gradient(135deg,#7e22ce,#be185d);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 4px rgba(168,85,247,.3));
+}
+.r-best{font-size:15px;color:var(--gold);font-weight:700;text-shadow:0 0 6px rgba(245,158,11,.4);}
+.stars-row{display:flex;gap:8px;justify-content:center;font-size:36px;margin:6px 0;}
+.star-i{opacity:0;transform:scale(0) rotate(-30deg);transition:all .4s cubic-bezier(.34,1.56,.64,1);}
+.star-i.show{opacity:1;transform:scale(1) rotate(0);}
+
+/* スタートボタン */
+#startBtn{
+  position:relative;
+  background:linear-gradient(135deg,#c026d3,#9333ea,#7c3aed);
+  color:#fff;border:none;border-radius:60px;padding:14px 44px;
+  font-size:20px;font-weight:900;font-family:inherit;cursor:pointer;
+  box-shadow:0 5px 20px rgba(168,85,247,.45),0 2px 0 rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.35);
+  letter-spacing:.1em;overflow:hidden;
+  transition:transform .12s,box-shadow .12s;
+  flex-shrink:0;
+}
+#startBtn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.25),transparent 60%);border-radius:60px;}
+#startBtn::after{
+  content:'';position:absolute;top:-100%;left:-100%;width:80px;height:300%;
+  background:rgba(255,255,255,.18);transform:skewX(-20deg);
+  animation:btnShine 2.5s ease-in-out infinite;
+}
+@keyframes btnShine{0%{left:-100%;}60%{left:200%;}100%{left:200%;}}
+#startBtn:active{transform:scale(.94);}
+
+/* ===== タップスタート画面 ===== */
+#tapStart{
+  position:fixed;inset:0;z-index:200;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:flex-start;
+  background:linear-gradient(175deg,#f0d8ff 0%,#fbd5f0 30%,#ffe8f8 55%,#fff0fa 80%,#fce8ff 100%);
+  cursor:pointer;overflow:hidden;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ---- イラストエリア（上半分・全幅） ---- */
+#ts-img-wrap{
+  position:relative;width:100%;flex-shrink:0;
+  height:calc(var(--real-vh,1vh) * 52);
+  overflow:hidden;
+}
+#ts-img-wrap img{
+  width:100%;height:100%;
+  object-fit:cover;object-position:center 18%;
+  display:block;
+}
+/* イラスト下のグラデーションぼかし */
+#ts-img-wrap::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;
+  height:60px;
+  background:linear-gradient(to top,#ffe8f8 0%,transparent 100%);
+  pointer-events:none;
+}
+/* イラスト上のきらきら枠 */
+#ts-img-wrap::before{
+  content:'';position:absolute;inset:0;z-index:2;
+  box-shadow:inset 0 0 0 4px rgba(255,200,255,.6),
+             inset 0 0 30px rgba(200,100,255,.15);
+  pointer-events:none;
+}
+
+/* ---- テキストエリア（下半分） ---- */
+#ts-bottom{
+  display:flex;flex-direction:column;align-items:center;
+  flex:1;justify-content:center;
+  padding:0 16px 12px;
+  gap:12px;
+}
+
+/* タイトルロゴ */
+#tapStart .ts-title{
+  font-size:clamp(24px,7vw,34px);font-weight:900;
+  text-align:center;line-height:1.25;
+  background:linear-gradient(135deg,#7e22ce,#c026d3,#be185d);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 8px rgba(168,85,247,.5)) drop-shadow(0 2px 0 rgba(255,255,255,.6));
+  animation:titleGlow2 2s ease-in-out infinite alternate;
+}
+@keyframes titleGlow2{
+  from{filter:drop-shadow(0 0 8px rgba(168,85,247,.5)) drop-shadow(0 2px 0 rgba(255,255,255,.6));}
+  to  {filter:drop-shadow(0 0 16px rgba(220,80,255,.8)) drop-shadow(0 0 28px rgba(255,150,255,.4)) drop-shadow(0 2px 0 rgba(255,255,255,.6));}
+}
+
+/* サブテキスト */
+#tapStart .ts-sub{
+  font-size:clamp(13px,3.5vw,16px);font-weight:700;
+  color:#a855f7;letter-spacing:.06em;
+  text-shadow:0 1px 0 rgba(255,255,255,.8);
+}
+
+/* タップボタン */
+#tapStart .ts-tap{
+  position:relative;overflow:hidden;
+  font-size:clamp(22px,6vw,28px);font-weight:900;
+  color:#fff;letter-spacing:.14em;
+  background:linear-gradient(135deg,#e040fb,#c026d3,#9333ea,#7c3aed);
+  padding:18px 54px;border-radius:70px;
+  box-shadow:0 8px 28px rgba(168,85,247,.55),
+             0 3px 0 rgba(100,0,160,.25),
+             inset 0 2px 0 rgba(255,255,255,.35);
+  animation:tapPulse 1s ease-in-out infinite alternate;
+}
+#tapStart .ts-tap::after{
+  content:'';position:absolute;top:-100%;left:-80px;width:60px;height:300%;
+  background:rgba(255,255,255,.22);transform:skewX(-20deg);
+  animation:btnShine2 2s ease-in-out infinite;
+}
+@keyframes btnShine2{0%{left:-80px;}55%{left:130%;}100%{left:130%;}}
+@keyframes tapPulse{
+  from{transform:scale(1);   box-shadow:0 8px 28px rgba(168,85,247,.55),0 3px 0 rgba(100,0,160,.25),inset 0 2px 0 rgba(255,255,255,.35);}
+  to  {transform:scale(1.07);box-shadow:0 12px 40px rgba(200,50,255,.75),0 3px 0 rgba(100,0,160,.25),inset 0 2px 0 rgba(255,255,255,.35);}
+}
+
+/* ---- 浮遊デコ ---- */
+.ts-deco{
+  position:absolute;pointer-events:none;
+  animation:tsDeco ease-in-out infinite alternate;
+}
+@keyframes tsDeco{
+  from{transform:translateY(0) rotate(-6deg) scale(1);}
+  to  {transform:translateY(-14px) rotate(8deg) scale(1.14);}
+}
+/* イラスト上に重なるデコ（z-index高め） */
+.ts-deco-top{z-index:3;}
+
+/* ---- フェードアウト ---- */
+#tapStart.fade-out{ animation:tsFade .5s ease forwards; }
+@keyframes tsFade{ from{opacity:1;} to{opacity:0;pointer-events:none;} }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<!-- タップスタート画面 -->
+<div id="tapStart">
+
+  <!-- イラストエリア（大きく・全幅） -->
+  <div id="ts-img-wrap">
+    <img src="top.jpg" alt="ひめ">
+    <!-- イラスト上に重なるデコ -->
+    <span class="ts-deco ts-deco-top" style="top:6%;left:4%;font-size:38px;animation-duration:2.6s;">💎</span>
+    <span class="ts-deco ts-deco-top" style="top:4%;right:5%;font-size:32px;animation-duration:3s;animation-delay:-.5s;">✨</span>
+    <span class="ts-deco ts-deco-top" style="top:38%;left:2%;font-size:28px;animation-duration:3.4s;animation-delay:-.8s;">💖</span>
+    <span class="ts-deco ts-deco-top" style="top:35%;right:3%;font-size:30px;animation-duration:2.8s;animation-delay:-1.1s;">⭐</span>
+    <span class="ts-deco ts-deco-top" style="bottom:30%;left:5%;font-size:26px;animation-duration:3.8s;animation-delay:-.3s;">🌸</span>
+    <span class="ts-deco ts-deco-top" style="bottom:28%;right:4%;font-size:28px;animation-duration:2.4s;animation-delay:-.9s;">🎀</span>
+    <span class="ts-deco ts-deco-top" style="top:12%;left:42%;font-size:22px;animation-duration:4.2s;animation-delay:-1.6s;">💫</span>
+  </div>
+
+  <!-- テキスト＆ボタンエリア -->
+  <div id="ts-bottom">
+    <!-- 下エリアにもデコ -->
+    <span class="ts-deco" style="top:56%;left:3%;font-size:30px;animation-duration:3.1s;animation-delay:-.4s;opacity:.7;">🌟</span>
+    <span class="ts-deco" style="top:54%;right:4%;font-size:26px;animation-duration:2.9s;animation-delay:-.7s;opacity:.7;">💕</span>
+    <span class="ts-deco" style="top:70%;left:6%;font-size:24px;animation-duration:3.5s;animation-delay:-1.2s;opacity:.65;">👑</span>
+    <span class="ts-deco" style="top:68%;right:5%;font-size:22px;animation-duration:2.7s;animation-delay:-.2s;opacity:.65;">🎵</span>
+    <span class="ts-deco" style="bottom:10%;left:12%;font-size:28px;animation-duration:3.3s;animation-delay:-.6s;opacity:.6;">💎</span>
+    <span class="ts-deco" style="bottom:12%;right:10%;font-size:26px;animation-duration:2.5s;animation-delay:-1s;opacity:.6;">🍭</span>
+
+    <div class="ts-title">👑 ひめの キラキラ キャッチ 👑</div>
+    <div class="ts-sub">✨ たからものを あつめよう！ ✨</div>
+    <div class="ts-tap">👆 ゆびで タッチ！ 👆</div>
+  </div>
+</div>
+
+<div id="scoreBoard">
+  <div class="sBox">
+    <div class="sLabel">⭐ てんすう</div>
+    <div class="sVal" id="scoreDisp">0</div>
+  </div>
+  <div class="sdiv"></div>
+  <div id="timerWrap">
+    <div class="tLabel">💖 のこり</div>
+    <div id="timerDisp">60</div>
+  </div>
+  <div class="sdiv"></div>
+  <div class="sBox">
+    <div class="sLabel">👑 さいこう</div>
+    <div class="sVal" id="bestDisp">0</div>
+  </div>
+</div>
+
+<div id="gameWrap">
+  <div id="gameBg"></div>
+
+  <!-- ゲーム背景装飾レイヤー -->
+  <div id="gameDeco">
+    <!-- フローティング装飾（低opacity、背景感） -->
+    <span class="bg-deco" style="left:6%;top:12%;animation-duration:4.2s;animation-delay:-1s;font-size:32px;">💎</span>
+    <span class="bg-deco" style="left:78%;top:8%;animation-duration:3.8s;animation-delay:-2s;font-size:26px;">🌸</span>
+    <span class="bg-deco" style="left:15%;top:35%;animation-duration:5s;animation-delay:-.5s;font-size:22px;">💫</span>
+    <span class="bg-deco" style="left:82%;top:30%;animation-duration:4.5s;animation-delay:-1.5s;font-size:24px;">⭐</span>
+    <span class="bg-deco" style="left:5%;top:55%;animation-duration:3.5s;animation-delay:-3s;font-size:20px;">💖</span>
+    <span class="bg-deco" style="left:88%;top:52%;animation-duration:4.8s;animation-delay:-.8s;font-size:22px;">✨</span>
+    <span class="bg-deco" style="left:40%;top:20%;animation-duration:6s;animation-delay:-2.5s;font-size:18px;">🎀</span>
+    <span class="bg-deco" style="left:60%;top:42%;animation-duration:4s;animation-delay:-1.2s;font-size:20px;">💕</span>
+    <!-- 地面の花 -->
+    <span class="ground-flower" style="left:4%;">🌸</span>
+    <span class="ground-flower" style="left:14%;animation-delay:-.5s;">🌼</span>
+    <span class="ground-flower" style="left:26%;animation-delay:-1s;">🌺</span>
+    <span class="ground-flower" style="left:62%;animation-delay:-.3s;">🌸</span>
+    <span class="ground-flower" style="left:74%;animation-delay:-1.5s;">🌼</span>
+    <span class="ground-flower" style="left:86%;animation-delay:-.8s;">🌺</span>
+  </div>
+
+  <canvas id="particleCanvas"></canvas>
+  <div id="flash"></div>
+  <div id="comboDisp"></div>
+  <div id="nrBanner">
+    <div class="nr-text">✨ しんきろく！✨</div>
+    <div class="nr-sub">👑 すごすぎる～！</div>
+  </div>
+  <div id="playerShadow"></div>
+  <div id="playerGlow"></div>
+  <div id="playerWrap">
+    <img src="character.png" alt="ひめ" id="playerImg">
+  </div>
+
+  <!-- タイトル／リザルト オーバーレイ -->
+  <div id="overlay">
+    <!-- 背景に浮かぶデコ（overlay全体） -->
+    <span class="ov-bg" style="font-size:36px;top:38%;left:2%;animation-duration:3.1s;">💎</span>
+    <span class="ov-bg" style="font-size:30px;top:42%;right:3%;animation-duration:2.7s;animation-delay:-.8s;">🌸</span>
+    <span class="ov-bg" style="font-size:28px;top:60%;left:4%;animation-duration:3.6s;animation-delay:-.4s;">💫</span>
+    <span class="ov-bg" style="font-size:24px;top:65%;right:5%;animation-duration:2.9s;animation-delay:-1.2s;">⭐</span>
+    <span class="ov-bg" style="font-size:22px;top:78%;left:6%;animation-duration:4s;animation-delay:-.6s;">💕</span>
+    <span class="ov-bg" style="font-size:26px;top:82%;right:4%;animation-duration:3.3s;animation-delay:-2s;">✨</span>
+    <span class="ov-bg" style="font-size:20px;top:70%;left:50%;animation-duration:5s;animation-delay:-.3s;">🎀</span>
+
+    <div id="topImgWrap">
+      <img class="top-img" src="top.jpg" alt="ひめのキラキラキャッチ">
+      <span class="title-deco" style="top:8px;left:10px;font-size:24px;animation-duration:2.2s;">💎</span>
+      <span class="title-deco" style="top:8px;right:12px;font-size:22px;animation-duration:2.8s;animation-delay:-.6s;">✨</span>
+      <span class="title-deco" style="top:40%;left:5px;font-size:20px;animation-duration:3s;animation-delay:-.3s;">💖</span>
+      <span class="title-deco" style="top:40%;right:5px;font-size:20px;animation-duration:2.5s;animation-delay:-1s;">🌸</span>
+      <span class="title-deco" style="bottom:56px;left:12px;font-size:22px;animation-duration:3.2s;animation-delay:-.8s;">⭐</span>
+      <span class="title-deco" style="bottom:56px;right:12px;font-size:22px;animation-duration:2.6s;animation-delay:-.4s;">🎀</span>
+      <div id="titleOverlay">
+        <div class="title-logo">👑 ひめの キラキラ キャッチ 👑</div>
+        <div class="title-sub">✨ おちてくる たからものを あつめよう！ ✨</div>
+      </div>
+    </div>
+
+    <!-- リザルト用コンパクトヘッダー（ゲーム終了後のみ表示） -->
+    <div id="resultHeader">
+      <div class="rh-crown">👸</div>
+      <div class="rh-title">ひめの キラキラ キャッチ</div>
+    </div>
+
+    <div id="overlayContent">
+
+      <!-- リザルトカード（ゲーム終了後） -->
+      <div class="glass-card" id="resultCard" style="display:none;text-align:center;margin-bottom:8px;">
+        <div class="result-msg" id="resultMsg"></div>
+        <div class="stars-row">
+          <span class="star-i" id="s1">⭐</span>
+          <span class="star-i" id="s2">⭐</span>
+          <span class="star-i" id="s3">⭐</span>
+        </div>
+        <div class="r-score-lbl">てんすう</div>
+        <div class="r-score-big" id="rScoreBig">0</div>
+        <div class="r-best" id="rBest"></div>
+      </div>
+
+      <!-- アイテムショーケース（タイトル時のみ） -->
+      <div id="itemShowcase">
+        <span class="showcase-item" style="animation-duration:1.8s;animation-delay:0s;">💎</span>
+        <span class="showcase-item" style="animation-duration:2.1s;animation-delay:-.3s;">✨</span>
+        <span class="showcase-item" style="animation-duration:1.6s;animation-delay:-.6s;">👗</span>
+        <span class="showcase-item" style="animation-duration:2.3s;animation-delay:-.9s;">🍭</span>
+        <span class="showcase-item" style="animation-duration:1.9s;animation-delay:-.2s;">💖</span>
+        <span class="showcase-item" style="animation-duration:2.0s;animation-delay:-.7s;">⭐</span>
+        <span class="showcase-item" style="animation-duration:1.7s;animation-delay:-.4s;">🌸</span>
+        <span class="showcase-item" style="animation-duration:2.2s;animation-delay:-.1s;">🎀</span>
+      </div>
+
+      <!-- キャラ画像 ＋ 説明カード 横並び -->
+      <div id="midSection">
+        <div id="charaThumb">
+          <img src="character.png" alt="ひめ" id="charaImg">
+        </div>
+        <div class="glass-card" id="howCard" style="margin:0;">
+          <div class="how-row"><span>💎</span><span>たからものを とると てんすう アップ！</span></div>
+          <div class="how-row"><span>🫑</span><span>じゃまものは さけよう！ ダウン</span></div>
+          <div class="how-row"><span>👆</span><span>ゆびで なぞると ひめが うごく！</span></div>
+          <div class="how-row"><span>🔥</span><span>れんぞくで とると コンボ ボーナス！</span></div>
+        </div>
+      </div>
+
+      <!-- さいこうスコアバッジ -->
+      <div id="bestBadge">
+        <span class="badge-label">👑 これまでの さいこう</span>
+        <span class="badge-val" id="badgeBestVal">0</span>
+        <span class="badge-unit">てん</span>
+      </div>
+
+      <button id="startBtn">✨ はじめる！ ✨</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// モバイル実高さ補正（アドレスバー分を除いた実際のvh）
+// ============================================================
+function setRealVh(){
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--real-vh', vh + 'px');
+}
+setRealVh();
+window.addEventListener('resize', setRealVh);
+window.addEventListener('orientationchange', () => setTimeout(setRealVh, 200));
+
+// ============================================================
+// 背景パーティクル（パステル）
+// ============================================================
+const bgC=document.getElementById('bgCanvas'), bgX=bgC.getContext('2d');
+let stars=[];
+function initBg(){
+  bgC.width=window.innerWidth; bgC.height=window.innerHeight;
+  stars=Array.from({length:100},()=>({
+    x:Math.random()*bgC.width, y:Math.random()*bgC.height,
+    r:Math.random()*2+.5,
+    a:Math.random(), da:(Math.random()-.5)*.01,
+    dx:(Math.random()-.5)*.1,
+    color: ['rgba(220,160,255,', 'rgba(255,160,210,', 'rgba(255,220,100,', 'rgba(180,220,255,'][Math.floor(Math.random()*4)]
+  }));
+}
+initBg(); window.addEventListener('resize',initBg);
+(function drawBg(){
+  bgX.clearRect(0,0,bgC.width,bgC.height);
+  stars.forEach(s=>{
+    s.a+=s.da; if(s.a>1||s.a<0)s.da*=-1;
+    s.x+=s.dx; if(s.x<0)s.x=bgC.width; if(s.x>bgC.width)s.x=0;
+    bgX.beginPath(); bgX.arc(s.x,s.y,s.r,0,Math.PI*2);
+    bgX.fillStyle=s.color+s.a*.7+')'; bgX.fill();
+  });
+  requestAnimationFrame(drawBg);
+})();
+
+// ============================================================
+// Particle Canvas
+// ============================================================
+const pCanvas=document.getElementById('particleCanvas'), pCtx=pCanvas.getContext('2d');
+const wrap=document.getElementById('gameWrap');
+function resizeP(){ pCanvas.width=wrap.clientWidth||430; pCanvas.height=wrap.clientHeight||700; }
+resizeP(); window.addEventListener('resize',resizeP);
+
+// ============================================================
+// Audio
+// ============================================================
+const AC=window.AudioContext||window.webkitAudioContext;
+let ac=null;
+function ensureAC(){ if(!ac)ac=new AC(); }
+function tone(f1,f2,type,dur,vol,delay=0){
+  try{
+    if(ac.state==='suspended')ac.resume();
+    const t=ac.currentTime+delay+0.01;
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type=type; o.frequency.setValueAtTime(f1,t);
+    if(f2)o.frequency.exponentialRampToValueAtTime(Math.max(f2,1),t+dur*.6);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.start(t); o.stop(t+dur+0.05);
+  }catch(e){}
+}
+function playCatch(c){ ensureAC(); const m=1+c*.06; tone(880*m,2200*m,'sine',.25,.2); tone(1320*m,2640*m,'sine',.18,.1,.05); }
+function playMiss(){ ensureAC(); tone(300,80,'sawtooth',.3,.15); }
+function playCombo(n){ ensureAC(); [523,659,784,1047,1319].slice(0,Math.min(n,5)).forEach((f,i)=>tone(f,f*1.5,'sine',.2,.18,i*.08)); }
+function playNR(){ ensureAC(); [523,659,784,1047,1319,1568].forEach((f,i)=>tone(f,f*2,'sine',.28,.2,i*.1)); }
+function playEnd(){ ensureAC(); [392,523,659,784,1047].forEach((f,i)=>tone(f,f,'triangle',.45,.16,i*.14)); }
+
+// ============================================================
+// BGM System — Web Audio API 完全自前合成
+// ============================================================
+const BGM = (() => {
+  const N = {
+    C3:131,D3:147,E3:165,F3:175,G3:196,A3:220,B3:247,
+    C4:262,D4:294,E4:330,F4:349,G4:392,A4:440,B4:494,
+    C5:523,D5:587,E5:659,F5:698,G5:784,A5:880,B5:988,
+  };
+  let bCtx=null, master=null, nodes=[], tmr=null, mode=null;
+
+  function _init(){
+    if(!bCtx){
+      bCtx=new(window.AudioContext||window.webkitAudioContext)();
+      master=bCtx.createGain(); master.gain.value=0.26;
+      master.connect(bCtx.destination);
+    }
+    if(bCtx.state==='suspended')bCtx.resume();
+  }
+
+  function _n(f, t0, dur, type, vol){
+    try{
+      const o=bCtx.createOscillator(), g=bCtx.createGain();
+      o.type=type; o.frequency.value=f;
+      o.connect(g); g.connect(master);
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(vol, t0+0.018);
+      g.gain.setValueAtTime(vol, Math.max(t0+0.02, t0+dur-0.04));
+      g.gain.linearRampToValueAtTime(0, t0+dur);
+      o.start(t0); o.stop(t0+dur+0.08);
+      nodes.push(o);
+    }catch(e){}
+  }
+
+  function _sched(arr, now, b){
+    arr.forEach(([f,beat,dur,tp,v])=>_n(f, now+beat*b, dur*b, tp||'sine', v||0.12));
+  }
+
+  function _stopAll(){
+    clearTimeout(tmr);
+    nodes.forEach(o=>{try{o.stop(bCtx.currentTime+0.06);}catch(e){}});
+    nodes=[];
+  }
+
+  function _fade(to, sec, cb){
+    if(!master)return cb&&cb();
+    master.gain.linearRampToValueAtTime(to, bCtx.currentTime+sec);
+    if(cb)setTimeout(cb, sec*1000);
+  }
+
+  // ────────────────────────────────────────────────
+  //  タイトルBGM: プリンセス・ワルツ (72BPM, 3/4, Cmaj, 8小節)
+  // ────────────────────────────────────────────────
+  function playTitle(){
+    _init(); _stopAll(); mode='title';
+    master.gain.setValueAtTime(0,bCtx.currentTime);
+    master.gain.linearRampToValueAtTime(0.26,bCtx.currentTime+2.0);
+    _loopTitle();
+  }
+
+  function _loopTitle(){
+    if(mode!=='title')return;
+    nodes=[];
+    const now=bCtx.currentTime+0.05, b=60/72;
+    const M=N;
+    // ── メロディ (sine, フルート風) ──
+    _sched([
+      // 小節1: G5→E5→C5 (優雅に降りる)
+      [M.G5,0,.9,'sine',.17],[M.E5,1,.9,'sine',.16],[M.C5,2,.9,'sine',.16],
+      // 小節2: 動き
+      [M.D5,3,.45,'sine',.14],[M.E5,3.5,.45,'sine',.15],[M.D5,4,.45,'sine',.14],[M.C5,5,.9,'sine',.16],
+      // 小節3: 上昇→A5
+      [M.E5,6,.45,'sine',.15],[M.G5,6.5,.45,'sine',.17],[M.A5,7,.9,'sine',.19],[M.G5,8,.9,'sine',.17],
+      // 小節4: 解決 C5 長め
+      [M.E5,9,.45,'sine',.15],[M.D5,9.5,.45,'sine',.14],[M.C5,10,1.85,'sine',.2],
+      // 小節5: 高音フレーズ A5→G5→E5
+      [M.A5,12,.9,'sine',.19],[M.G5,13,.9,'sine',.17],[M.E5,14,.9,'sine',.16],
+      // 小節6: きらめき
+      [M.G5,15,.45,'sine',.17],[M.A5,15.5,.45,'sine',.19],[M.G5,16,.9,'sine',.17],[M.E5,17,.9,'sine',.15],
+      // 小節7: 動き→クライマックス
+      [M.D5,18,.45,'sine',.14],[M.E5,18.5,.45,'sine',.16],[M.G5,19,.9,'sine',.18],[M.E5,20,.45,'sine',.15],[M.D5,20.5,.45,'sine',.14],
+      // 小節8: 解決 C5 長い
+      [M.C5,21,2.85,'sine',.21],
+    ], now, b);
+
+    // ── ハープ・アルペジオ (triangle) ──
+    const chords=[
+      {s:0, ns:[M.C4,M.E4,M.G4]},{s:3, ns:[M.G3,M.B3,M.D4]},
+      {s:6, ns:[M.A3,M.C4,M.E4]},{s:9, ns:[M.F3,M.C4,M.F4]},
+      {s:12,ns:[M.C4,M.E4,M.G4]},{s:15,ns:[M.A3,M.C4,M.E4]},
+      {s:18,ns:[M.G3,M.B3,M.D4]},{s:21,ns:[M.C4,M.E4,M.G4]},
+    ];
+    chords.forEach(({s,ns})=>{
+      for(let beat=0;beat<3;beat++){
+        ns.forEach((f,j)=>_n(f, now+(s+beat+j*0.34)*b, 0.28*b, 'triangle', 0.038));
+      }
+    });
+
+    // ── ベース (sine, チェロ風) ──
+    [M.C3,M.G3,M.A3,M.F3,M.C3,M.A3,M.G3,M.C3].forEach((f,i)=>{
+      _n(f, now+i*3*b, 0.75*b, 'sine', 0.09);
+    });
+
+    tmr=setTimeout(_loopTitle, 24*b*1000 - 160);
+  }
+
+  // ────────────────────────────────────────────────
+  //  ゲームBGM: プリンセス・アドベンチャー (132BPM, 4/4, Cmaj, 8小節)
+  // ────────────────────────────────────────────────
+  function playGame(){
+    _init();
+    _fade(0, 0.45, ()=>{
+      _stopAll(); mode='game';
+      master.gain.setValueAtTime(0,bCtx.currentTime);
+      master.gain.linearRampToValueAtTime(0.26,bCtx.currentTime+0.55);
+      _loopGame();
+    });
+  }
+
+  function backToTitle(){
+    _init();
+    _fade(0, 0.55, ()=>{
+      _stopAll(); mode='title';
+      master.gain.setValueAtTime(0,bCtx.currentTime);
+      master.gain.linearRampToValueAtTime(0.26,bCtx.currentTime+1.8);
+      _loopTitle();
+    });
+  }
+
+  function _loopGame(){
+    if(mode!=='game')return;
+    nodes=[];
+    const now=bCtx.currentTime+0.05, b=60/132;
+    const M=N;
+    // ── メロディ (triangle, 元気) ──
+    _sched([
+      // Bar1: スキップ♪
+      [M.E5,0,.38,'triangle',.17],[M.G5,.5,.38,'triangle',.18],
+      [M.A5,1,.38,'triangle',.19],[M.G5,1.5,.38,'triangle',.17],
+      [M.E5,2,.38,'triangle',.16],[M.C5,2.5,.38,'triangle',.15],
+      [M.D5,3,.38,'triangle',.16],[M.E5,3.5,.38,'triangle',.17],
+      // Bar2
+      [M.G5,4,.78,'triangle',.19],[M.E5,5,.38,'triangle',.16],
+      [M.D5,5.5,.38,'triangle',.15],[M.C5,6,.38,'triangle',.15],
+      [M.D5,6.5,.38,'triangle',.16],[M.E5,7,.38,'triangle',.17],[M.G5,7.5,.38,'triangle',.18],
+      // Bar3: 上昇クライマックス
+      [M.A5,8,.38,'triangle',.19],[M.G5,8.5,.38,'triangle',.18],
+      [M.E5,9,.38,'triangle',.17],[M.D5,9.5,.38,'triangle',.15],
+      [M.E5,10,.38,'triangle',.17],[M.G5,10.5,.38,'triangle',.18],
+      [M.A5,11,.38,'triangle',.19],[M.B5,11.5,.38,'triangle',.2],
+      // Bar4: 解決
+      [M.A5,12,.38,'triangle',.19],[M.G5,12.5,.38,'triangle',.17],
+      [M.E5,13,.38,'triangle',.16],[M.D5,13.5,.38,'triangle',.14],
+      [M.C5,14,1.85,'triangle',.19],
+    ], now, b);
+
+    // ── ドライブ・ベース (square, 8分音符) ──
+    [M.C3,M.C3,M.C3,M.C3,M.C3,M.C3,M.C3,M.C3,
+     M.F3,M.F3,M.F3,M.F3,M.F3,M.F3,M.F3,M.F3,
+     M.C3,M.C3,M.A3,M.A3,M.C3,M.C3,M.C3,M.C3,
+     M.G3,M.G3,M.G3,M.G3,M.C3,M.C3,M.C3,M.C3,
+    ].forEach((f,i)=>_n(f, now+i*0.5*b, 0.26*b, 'square', 0.06));
+
+    // ── オフビート・コード ──
+    [[2,[M.C4,M.E4,M.G4]],[6,[M.F3,M.A3,M.C4]],
+     [10,[M.C4,M.E4,M.G4]],[14,[M.G3,M.B3,M.D4]]].forEach(([beat,ns])=>{
+      ns.forEach(f=>_n(f, now+beat*b, 0.28*b, 'triangle', 0.036));
+    });
+
+    // ── パーカッション風ノイズ（クラップ感）──
+    [0,2,4,6,8,10,12,14].forEach(beat=>{
+      _n(200+Math.random()*80, now+beat*b, 0.06*b, 'sawtooth', 0.022);
+    });
+
+    tmr=setTimeout(_loopGame, 16*b*1000 - 160);
+  }
+
+  function stop(){ _stopAll(); mode=null; }
+  return {playTitle, playGame, backToTitle, stop};
+})();
+
+// ============================================================
+// Game state
+// ============================================================
+const ITEMS=[
+  {emoji:'💎',score:10,type:'good',size:46},
+  {emoji:'✨',score:5, type:'good',size:40},
+  {emoji:'👗',score:8, type:'good',size:44},
+  {emoji:'🍭',score:6, type:'good',size:42},
+  {emoji:'💖',score:7, type:'good',size:42},
+  {emoji:'⭐',score:5, type:'good',size:40},
+  {emoji:'🌸',score:6, type:'good',size:42},
+  {emoji:'🎀',score:5, type:'good',size:40},
+  {emoji:'🫑',score:-8, type:'bad', size:40},
+  {emoji:'💀',score:-12,type:'bad', size:40},
+  {emoji:'🦠',score:-6, type:'bad', size:38},
+];
+const GOOD_W=.75;
+
+let score=0, bestScore=parseInt(localStorage.getItem('p_best')||'0');
+let timeLeft=60, running=false;
+let nrShown=false, combo=0;
+let dropItems=[], particles=[];
+let spawnT=0, SPAWN_I=85;
+let raf=null, timer=null;
+let playerLeft=50;
+let lastTs=0;
+
+// ============================================================
+// Pointer
+// ============================================================
+let pDown=false;
+function handlePtr(clientX){
+  const r=wrap.getBoundingClientRect();
+  const pct=(clientX-r.left)/r.width*100;
+  playerLeft=Math.max(8,Math.min(92,pct));
+  document.getElementById('playerWrap').style.left=playerLeft+'%';
+  document.getElementById('playerShadow').style.left=playerLeft+'%';
+}
+wrap.addEventListener('touchstart',e=>{ ensureAC(); pDown=true; handlePtr(e.touches[0].clientX); },{passive:false});
+wrap.addEventListener('touchmove', e=>{ e.preventDefault(); if(pDown)handlePtr(e.touches[0].clientX); },{passive:false});
+wrap.addEventListener('touchend',  ()=>pDown=false);
+wrap.addEventListener('mousedown', e=>{ pDown=true; handlePtr(e.clientX); });
+wrap.addEventListener('mousemove', e=>{ if(pDown)handlePtr(e.clientX); });
+wrap.addEventListener('mouseup',   ()=>pDown=false);
+
+// ============================================================
+// Item pool
+// ============================================================
+const pool=[];
+function getItemEl(){
+  if(pool.length){const el=pool.pop(); el.style.display='block'; return el;}
+  const d=document.createElement('div');
+  d.className='drop-item'; wrap.appendChild(d); return d;
+}
+function releaseItemEl(el){ el.style.display='none'; pool.push(el); }
+
+// ============================================================
+// Spawn
+// ============================================================
+function spawnItem(){
+  const good=Math.random()<GOOD_W;
+  const list=ITEMS.filter(i=>i.type===(good?'good':'bad'));
+  const def=list[Math.floor(Math.random()*list.length)];
+  const el=getItemEl();
+  el.textContent=def.emoji;
+  el.className='drop-item'+(def.type==='bad'?' bad':'');
+  el.style.fontSize=def.size+'px';
+  el.style.left=(8+Math.random()*84)+'%';
+  el.style.top='-60px';
+  // vy は px/秒 で管理（画面高さに対して約20〜35%/秒）
+  const wH=wrap.clientHeight||700;
+  const baseSpeed = wH * (0.22 + Math.random()*0.14);  // 画面高の22〜36%/秒
+  const accel     = (60-timeLeft) * wH * 0.0015;       // 時間経過で加速
+  dropItems.push({el, x:parseFloat(el.style.left), y:-60,
+    vy: baseSpeed + accel,
+    score:def.score, size:def.size, type:def.type});
+}
+
+// ============================================================
+// Particles
+// ============================================================
+const GOOD_COLORS=['#e879f9','#f472b6','#fbbf24','#fff','#a78bfa','#60d8ff'];
+const BAD_COLORS=['#94a3b8','#cbd5e1'];
+function spawnParticles(x,y,n,colors){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, sp=2+Math.random()*5;
+    particles.push({ x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-2.5,
+      life:1, decay:.025+Math.random()*.025,
+      size:3+Math.random()*6, color:colors[Math.floor(Math.random()*colors.length)],
+      star:Math.random()<.5 });
+  }
+}
+function drawParticles(){
+  pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);
+  particles=particles.filter(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.vy+=.18; p.life-=p.decay;
+    if(p.life<=0)return false;
+    pCtx.globalAlpha=p.life;
+    pCtx.fillStyle=p.color;
+    if(p.star){ drawStar(p.x,p.y,p.size); }
+    else{ pCtx.beginPath(); pCtx.arc(p.x,p.y,p.size,0,Math.PI*2); pCtx.fill(); }
+    return true;
+  });
+  pCtx.globalAlpha=1;
+}
+function drawStar(x,y,r){
+  pCtx.beginPath();
+  for(let i=0;i<10;i++){
+    const a=(i*Math.PI/5)-Math.PI/2, rad=i%2===0?r:r*.45;
+    i===0?pCtx.moveTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad):pCtx.lineTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad);
+  }
+  pCtx.closePath(); pCtx.fill();
+}
+
+// ============================================================
+// UI helpers
+// ============================================================
+function addFloat(xPct,yPx,text,color){
+  const el=document.createElement('div');
+  el.className='scorePopup'; el.textContent=text;
+  el.style.color=color; el.style.left=xPct+'%'; el.style.top=yPx+'px';
+  wrap.appendChild(el);
+  setTimeout(()=>el.remove(),900);
+}
+function flash(color){
+  const el=document.getElementById('flash');
+  el.style.background=color; el.style.opacity='.3';
+  setTimeout(()=>el.style.opacity='0',90);
+}
+function updateScore(pop){
+  document.getElementById('scoreDisp').textContent=score;
+  document.getElementById('bestDisp').textContent=Math.max(bestScore,score);
+  if(pop){
+    const el=document.getElementById('scoreDisp');
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    setTimeout(()=>el.classList.remove('pop'),200);
+  }
+}
+function showCombo(c){
+  const el=document.getElementById('comboDisp');
+  if(c<3){el.style.display='none';return;}
+  el.style.display='block';
+  const labels=['','','','🔥 3コンボ！','💫 4コンボ！','⚡ 5コンボ！'];
+  el.textContent=c<=5?labels[c]:`👑 ${c}コンボ！！`;
+  el.style.animation='none'; void el.offsetWidth; el.style.animation='comboIn .3s cubic-bezier(.34,1.56,.64,1)';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',1200);
+}
+function checkNR(){
+  if(score>bestScore&&bestScore>0&&!nrShown){
+    nrShown=true;
+    document.getElementById('gameBg').classList.add('rainbow');
+    playNR();
+    const b=document.getElementById('nrBanner'); b.style.display='block';
+    const t=b.querySelector('.nr-text');
+    t.style.animation='none'; void t.offsetWidth; t.style.animation='nrPop .45s cubic-bezier(.34,1.56,.64,1) forwards';
+    setTimeout(()=>b.style.display='none',2600);
+  }
+}
+
+// ============================================================
+// Player bounce
+// ============================================================
+let pbY=0, pbDir=1;
+function tickPlayer(){
+  pbY+=.07*pbDir; if(Math.abs(pbY)>3)pbDir*=-1;
+  const pw=document.getElementById('playerWrap');
+  const sh=document.getElementById('playerShadow');
+  const gl=document.getElementById('playerGlow');
+  const b=52-pbY;              // 160px キャラに合わせた底辺
+  if(pw){ pw.style.bottom=b+'px'; }
+  if(gl){ gl.style.bottom=(b-20)+'px'; gl.style.left=playerLeft+'%'; }
+  if(sh){ sh.style.bottom='28px'; }
+}
+
+// ============================================================
+// Update
+// ============================================================
+function update(dt){
+  spawnT+=dt;
+  if(spawnT>=SPAWN_I){ spawnT=0; spawnItem(); if(SPAWN_I>38)SPAWN_I-=.3; }
+
+  const wH=wrap.clientHeight||700;
+  const plX=wrap.clientWidth*(playerLeft/100);
+  const plY=wH-120;   // 160px キャラの中心に合わせる
+  const CRXY=44;
+
+  dropItems=dropItems.filter(item=>{
+    item.y += item.vy * dt / 60;   // dt正規化：60fps基準
+    item.el.style.top=item.y+'px';
+
+    const ix=wrap.clientWidth*(item.x/100);
+    const iy=item.y+item.size/2;
+    const dx=Math.abs(ix-plX), dy=Math.abs(iy-plY);
+    if(dx<CRXY+item.size*.38&&dy<CRXY+item.size*.32){
+      if(item.type==='good'){
+        combo++;
+        const bonus=combo>=3?Math.floor(combo/3):0;
+        const pts=item.score+bonus;
+        score+=pts; updateScore(true);
+        playCatch(combo); if(combo>=3)playCombo(combo);
+        showCombo(combo);
+        spawnParticles(ix,iy,18,GOOD_COLORS);
+        flash('rgba(255,180,255,');
+        addFloat(item.x,iy-30,`+${pts}`,bonus>0?'#f59e0b':'#7e22ce');
+        checkNR();
+      } else {
+        combo=0; showCombo(0);
+        score=Math.max(0,score+item.score); updateScore(false);
+        playMiss();
+        spawnParticles(ix,iy,8,BAD_COLORS);
+        flash('rgba(255,100,100,');
+        addFloat(item.x,iy-30,`${item.score}`,'#e11d48');
+      }
+      releaseItemEl(item.el); return false;
+    }
+    if(item.y>wH+60){ releaseItemEl(item.el); return false; }
+    return true;
+  });
+}
+
+// ============================================================
+// Loop
+// ============================================================
+function loop(ts){
+  if(!running)return;
+  // deltaTime: 前フレームからの経過時間を60fps基準に正規化（最大3フレーム分でキャップ）
+  const dt = lastTs ? Math.min((ts - lastTs) / 16.667, 3) : 1;
+  lastTs = ts;
+  try{ update(dt); }catch(e){ console.warn(e); }
+  try{ tickPlayer(); }catch(e){}
+  try{ drawParticles(); }catch(e){}
+  raf=requestAnimationFrame(loop);
+}
+
+// ============================================================
+// Timer
+// ============================================================
+function startTimer(){
+  timer=setInterval(()=>{
+    if(!running){clearInterval(timer);return;}
+    timeLeft--;
+    const td=document.getElementById('timerDisp');
+    td.textContent=timeLeft;
+    td.classList.toggle('danger',timeLeft<=10);
+    if(timeLeft<=0)endGame();
+  },1000);
+}
+
+// ============================================================
+// Start
+// ============================================================
+function startGame(){
+  ensureAC();
+  score=0; timeLeft=60; combo=0; nrShown=false;
+  dropItems.forEach(i=>releaseItemEl(i.el)); dropItems=[];
+  particles=[]; spawnT=0; SPAWN_I=85; running=true; lastTs=0;
+  _bgmReady = true; // タイトルBGMの二重起動防止
+  BGM.playGame(); // ゲームBGM開始
+  playerLeft=50;
+  const pw=document.getElementById('playerWrap');
+  const sh=document.getElementById('playerShadow');
+  const gl=document.getElementById('playerGlow');
+  if(pw){ pw.style.left='50%'; pw.style.bottom='52px'; }
+  if(sh){ sh.style.left='50%'; sh.style.bottom='28px'; }
+  if(gl){ gl.style.left='50%'; gl.style.bottom='32px'; }
+  document.getElementById('gameBg').classList.remove('rainbow');
+  document.getElementById('topImgWrap').style.display='';   // タイトル画像を戻す
+  document.getElementById('resultHeader').style.display='none'; // リザルトヘッダーを隠す
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('nrBanner').style.display='none';
+  document.getElementById('comboDisp').style.display='none';
+  document.getElementById('timerDisp').classList.remove('danger');
+  document.getElementById('timerDisp').textContent=60;
+  updateScore(false);
+  raf=requestAnimationFrame(loop);
+  startTimer();
+}
+
+// ============================================================
+// End
+// ============================================================
+function endGame(){
+  running=false; clearInterval(timer); cancelAnimationFrame(raf);
+  BGM.backToTitle(); // タイトルBGMへ
+  playEnd();
+  const newBest=score>bestScore;
+  if(newBest){ bestScore=score; localStorage.setItem('p_best',bestScore); }
+  updateScore(false);
+
+  // 紙吹雪（パステル）
+  const cols=['#f9a8d4','#e879f9','#fbbf24','#a78bfa','#c084fc','#fde68a'];
+  const fire=o=>confetti({particleCount:130,spread:85,origin:{y:.45},colors:cols,...o});
+  fire({}); setTimeout(()=>fire({angle:70,origin:{x:.1,y:.5}}),300); setTimeout(()=>fire({angle:110,origin:{x:.9,y:.5}}),550);
+
+  let msg;
+  if(score>=120)      msg='👑 ひめ、てんさい！\nせかいで いちばん！';
+  else if(score>=80)  msg='🌟 すごすぎる！！\nプリンセス まんてん！';
+  else if(score>=50)  msg='💖 よくできました！\nかわいい～！';
+  else if(score>=25)  msg='✨ がんばったね！\nまた あそんでね！';
+  else                msg='🍀 つぎは もっと\nとれるよ！';
+
+  const starCount=score>=80?3:score>=40?2:1;
+  document.getElementById('resultMsg').textContent=msg;
+  document.getElementById('rScoreBig').textContent=score;
+  document.getElementById('rBest').textContent=newBest?'🎉 あたらしい さいこう！':`👑 さいこう：${bestScore}てん`;
+  document.getElementById('resultCard').style.display='block';
+  document.getElementById('howCard').style.display='none';
+  document.getElementById('itemShowcase').style.display='none';
+  document.getElementById('midSection').style.display='none';
+  document.getElementById('topImgWrap').style.display='none';   // 大きい絵を隠す
+  document.getElementById('resultHeader').style.display='block'; // コンパクトヘッダー表示
+  document.getElementById('badgeBestVal').textContent=bestScore;
+  document.getElementById('badgeBestVal').closest('#bestBadge').style.display='flex';
+  ['s1','s2','s3'].forEach((id,i)=>{
+    const el=document.getElementById(id);
+    el.classList.remove('show'); el.textContent=i<starCount?'⭐':'✩';
+    if(i<starCount)setTimeout(()=>el.classList.add('show'),500+i*200);
+  });
+  document.getElementById('startBtn').textContent='✨ もう いっかい！ ✨';
+  document.getElementById('overlay').style.display='flex';
+
+  if(typeof google!=='undefined'&&google.script)google.script.run.saveScore(score);
+}
+
+// ============================================================
+// 白背景除去：Canvas経由でピクセル透明化（複数画像対応）
+// ============================================================
+function removeWhiteBg(img){
+  function process(){
+    try{
+      const c=document.createElement('canvas');
+      c.width=img.naturalWidth; c.height=img.naturalHeight;
+      const x=c.getContext('2d');
+      x.drawImage(img,0,0);
+      const id=x.getImageData(0,0,c.width,c.height), d=id.data;
+      for(let i=0;i<d.length;i+=4){
+        const r=d[i],g=d[i+1],b=d[i+2];
+        if(r>230&&g>230&&b>230){
+          const w=(r+g+b)/3;
+          d[i+3]=Math.max(0,Math.round((1-(w-230)/25)*d[i+3]));
+        }
+      }
+      x.putImageData(id,0,0);
+      img.src=c.toDataURL('image/png');
+    }catch(e){}
+  }
+  if(img.complete&&img.naturalWidth>0) process();
+  else img.addEventListener('load',process);
+}
+removeWhiteBg(document.getElementById('playerImg'));
+// オーバーレイ内のキャラサムネも同じ処理
+removeWhiteBg(document.getElementById('charaImg'));
+
+// ============================================================
+// Init
+// ============================================================
+document.getElementById('startBtn').addEventListener('click',startGame);
+
+// ===== タップスタート画面の制御 =====
+let _bgmReady = false;
+const tapStartEl = document.getElementById('tapStart');
+
+function _onTapStart(){
+  if(_bgmReady) return;
+  _bgmReady = true;
+  // BGM開始
+  BGM.playTitle();
+  // フェードアウトして消す
+  tapStartEl.classList.add('fade-out');
+  setTimeout(() => tapStartEl.style.display = 'none', 520);
+}
+
+tapStartEl.addEventListener('touchstart', _onTapStart, {once:true, passive:true});
+tapStartEl.addEventListener('mousedown',  _onTapStart, {once:true});
+document.getElementById('bestDisp').textContent=bestScore;
+document.getElementById('badgeBestVal').textContent=bestScore;
+const _pw=document.getElementById('playerWrap');
+const _sh=document.getElementById('playerShadow');
+const _gl=document.getElementById('playerGlow');
+if(_pw){ _pw.style.left='50%'; _pw.style.bottom='52px'; }
+if(_sh){ _sh.style.left='50%'; _sh.style.bottom='28px'; }
+if(_gl){ _gl.style.left='50%'; _gl.style.bottom='32px'; }
+</script>
+</body>
+</html>
