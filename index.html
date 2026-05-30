@@ -800,13 +800,14 @@ const BGM = (() => {
   // ────────────────────────────────────────────────
   function playTitle(){
     _init(); _stopAll(); mode='title';
-    const _start = () => {
+    // resume() を同期で呼び、少し待ってから音符スケジュール（iOS/Android両対応）
+    bCtx.resume();
+    setTimeout(()=>{
+      if(mode!=='title')return;
       master.gain.setValueAtTime(0,bCtx.currentTime);
       master.gain.linearRampToValueAtTime(0.26,bCtx.currentTime+2.0);
       _loopTitle();
-    };
-    // 常に resume() を Promise で待ってから再生（Android/iOS対応）
-    Promise.resolve(bCtx.resume()).then(_start).catch(_start);
+    }, 80);
   }
 
   function _loopTitle(){
@@ -1113,8 +1114,8 @@ function update(dt){
 
   const wH=wrap.clientHeight||700;
   const plX=wrap.clientWidth*(playerLeft/100);
-  const plY=wH-120;   // 160px キャラの中心に合わせる
-  const CRXY=44;
+  const plY=wH-52-60;  // bottom:52px + キャラ上部60px = キャッチ位置
+  const CRXY=50;
 
   dropItems=dropItems.filter(item=>{
     item.y += item.vy * dt / 60;   // dt正規化：60fps基準
@@ -1155,8 +1156,8 @@ function update(dt){
 // ============================================================
 function loop(ts){
   if(!running)return;
-  // deltaTime: 前フレームからの経過時間を60fps基準に正規化（最大3フレーム分でキャップ）
-  const dt = lastTs ? Math.min((ts - lastTs) / 16.667, 3) : 1;
+  // deltaTime: 最大1.5フレームでキャップ（スパイク時のすり抜け防止）
+  const dt = lastTs ? Math.min((ts - lastTs) / 16.667, 1.5) : 1;
   lastTs = ts;
   try{ update(dt); }catch(e){ console.warn(e); }
   try{ tickPlayer(); }catch(e){}
