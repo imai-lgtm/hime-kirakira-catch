@@ -953,7 +953,7 @@ let score=0, bestScore=parseInt(localStorage.getItem('p_best')||'0');
 let timeLeft=60, running=false;
 let nrShown=false, combo=0;
 let dropItems=[], particles=[];
-let spawnT=0, SPAWN_I=85;
+let spawnT=0, SPAWN_I=1100; // ms単位で管理（フレームレート非依存）
 let raf=null, timer=null;
 let playerLeft=50;
 let lastTs=0;
@@ -1002,8 +1002,8 @@ function spawnItem(){
   el.style.top='-60px';
   // vy は px/秒 で管理（画面高さに対して約20〜35%/秒）
   const wH=wrap.clientHeight||700;
-  const baseSpeed = wH * (0.65 + Math.random()*0.3);   // 画面高の65〜95%/秒（さらに高速化）
-  const accel     = (60-timeLeft) * wH * 0.003;        // 時間経過で加速
+  const baseSpeed = wH * (0.8 + Math.random()*0.35);   // 画面高の80〜115%/秒
+  const accel     = (60-timeLeft) * wH * 0.004;        // 時間経過で加速
   dropItems.push({el, x:parseFloat(el.style.left), y:-60,
     vy: baseSpeed + accel,
     score:def.score, size:def.size, type:def.type});
@@ -1108,9 +1108,9 @@ function tickPlayer(){
 // ============================================================
 // Update
 // ============================================================
-function update(dt){
-  spawnT+=dt;
-  if(spawnT>=SPAWN_I){ spawnT=0; spawnItem(); if(SPAWN_I>38)SPAWN_I-=.3; }
+function update(dt, elapsed){
+  spawnT+=elapsed; // msベースで積算（フレームレート非依存）
+  if(spawnT>=SPAWN_I){ spawnT=0; spawnItem(); if(SPAWN_I>500)SPAWN_I-=8; }
 
   const wH=wrap.clientHeight||700;
   const plX=wrap.clientWidth*(playerLeft/100);
@@ -1156,10 +1156,10 @@ function update(dt){
 // ============================================================
 function loop(ts){
   if(!running)return;
-  // deltaTime: 最大1.5フレームでキャップ（スパイク時のすり抜け防止）
-  const dt = lastTs ? Math.min((ts - lastTs) / 16.667, 1.5) : 1;
+  const elapsed = lastTs ? Math.min(ts - lastTs, 50) : 16; // ms（最大50msでキャップ）
+  const dt = elapsed / 16.667; // 移動計算用（60fps基準）、最大3フレーム相当
   lastTs = ts;
-  try{ update(dt); }catch(e){ console.warn(e); }
+  try{ update(dt, elapsed); }catch(e){ console.warn(e); }
   try{ tickPlayer(); }catch(e){}
   try{ drawParticles(); }catch(e){}
   raf=requestAnimationFrame(loop);
@@ -1186,7 +1186,7 @@ function startGame(){
   ensureAC();
   score=0; timeLeft=60; combo=0; nrShown=false;
   dropItems.forEach(i=>releaseItemEl(i.el)); dropItems=[];
-  particles=[]; spawnT=0; SPAWN_I=85; running=true; lastTs=0;
+  particles=[]; spawnT=0; SPAWN_I=1100; running=true; lastTs=0;
   _bgmReady = true; // タイトルBGMの二重起動防止
   BGM.playGame(); // ゲームBGM開始
   playerLeft=50;
@@ -1296,6 +1296,7 @@ const tapStartEl = document.getElementById('tapStart');
 function _onTapStart(){
   if(_bgmReady) return;
   _bgmReady = true;
+  ensureAC(); // SFX用AudioContextも事前初期化（当たり判定の遅延防止）
   // BGM開始
   BGM.playTitle();
   // フェードアウトして消す
